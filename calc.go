@@ -82,14 +82,12 @@ func parse(expression string) (result float64, err error) {
 			return result, errors.New("error while calc subexpression: " + err.Error())
 		}
 
-		if operator == ')' && isLeftBracket(operatorsStack.peek()) {
+		if isRightBracket(operator) && isLeftBracket(operatorsStack.peek()) {
 			operatorsStack.top()
 			continue
-		} else {
-			operatorsStack.push(operator)
-			expectNumOrLeftComa = true
-			continue
 		}
+		operatorsStack.push(operator)
+		expectNumOrLeftComa = true
 	}
 
 	for !operatorsStack.isEmpty() {
@@ -170,6 +168,10 @@ func isDot(v rune) bool {
 
 func isLeftBracket(v rune) bool {
 	return v == '('
+}
+
+func isRightBracket(v rune) bool {
+	return v == ')'
 }
 
 func isOperator(char rune) bool {
