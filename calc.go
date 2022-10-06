@@ -46,7 +46,7 @@ func parse(expression string) (result float64, err error) {
 	expectNumOrLeftComa := true
 	for utf8.RuneCountInString(expression) > 0 {
 		if expectNumOrLeftComa {
-			if expression[0] == '(' {
+			if isLeftBracket(rune(expression[0])) {
 				operatorsStack.push(rune(expression[0]))
 				expression = expression[1:]
 				continue
@@ -82,7 +82,7 @@ func parse(expression string) (result float64, err error) {
 			return result, errors.New("error while calc subexpression: " + err.Error())
 		}
 
-		if operator == ')' && operatorsStack.peek() == '(' {
+		if operator == ')' && isLeftBracket(operatorsStack.peek()) {
 			operatorsStack.top()
 			continue
 		} else {
@@ -166,6 +166,10 @@ func parseNumber(expression string) (number float64, length int, err error) {
 
 func isDot(v rune) bool {
 	return v == '.'
+}
+
+func isLeftBracket(v rune) bool {
+	return v == '('
 }
 
 func isOperator(char rune) bool {
