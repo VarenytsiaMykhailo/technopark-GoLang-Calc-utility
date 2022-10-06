@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -36,33 +37,6 @@ func main() {
 	fmt.Println(result)
 }
 
-type StackConstraint interface {
-	rune | float64
-}
-
-type Stack[T StackConstraint] struct {
-	data []T
-}
-
-func (o *Stack[T]) push(elem T) {
-	o.data = append(o.data, elem)
-}
-
-func (o *Stack[T]) peek() T {
-	return o.data[len(o.data)-1]
-}
-
-func (o *Stack[T]) top() T {
-	n := len(o.data) - 1
-	elem := o.data[n]
-	o.data = o.data[:n]
-	return elem
-}
-
-func (o *Stack[T]) isEmpty() bool {
-	return len(o.data) == 0
-}
-
 func parse(expression string) (result float64, err error) {
 	expression = strings.ReplaceAll(expression, " ", "")
 
@@ -77,52 +51,44 @@ func parse(expression string) (result float64, err error) {
 				expression = expression[1:]
 				continue
 			}
-			number, numberLength, err := ParseNumber(expression)
+			number, numberLength, err := parseNumber(expression)
 			if err != nil {
-				return result, err
+				return result, errors.New("error while parsing number: " + err.Error())
 			}
 			expression = expression[numberLength:]
 			numbersStack.push(number)
 			expectNumOrLeftComa = false
-		} else {
-			operator := rune(expression[0])
-			if !isOperator(operator) {
-				return result, errors.New("incorrect operator " + string(operator))
-			}
-			expression = expression[1:]
-			if err != nil {
-				return result, err
-			}
-			if operatorsStack.isEmpty() {
-				operatorsStack.push(operator)
-				//expression = expression[1:]
-				expectNumOrLeftComa = true
-				continue
-			} else if operatorsPriorities[operator] > operatorsPriorities[operatorsStack.peek()] {
-				operatorsStack.push(operator)
-				expectNumOrLeftComa = true
-				continue
-			} else { // Need to calc subexpression
-				for !operatorsStack.isEmpty() && (operatorsPriorities[operator] <= operatorsPriorities[operatorsStack.peek()]) {
-					lastOperatorInStack := operatorsStack.top()
-					rightNumber := numbersStack.top()
-					leftNumber := numbersStack.top()
-					operationResult, err := ExecuteOperator(leftNumber, rightNumber, lastOperatorInStack)
-					if err != nil {
-						return result, err
-					}
+			continue
+		}
+		operator := rune(expression[0])
+		if !isOperator(operator) {
+			return result, errors.New("incorrect operator " + string(operator))
+		}
+		expression = expression[1:]
+		if operatorsStack.isEmpty() {
+			operatorsStack.push(operator)
+			expectNumOrLeftComa = true
+			continue
+		}
+		if operatorsPriorities[operator] > operatorsPriorities[operatorsStack.peek()] {
+			operatorsStack.push(operator)
+			expectNumOrLeftComa = true
+			continue
+		}
 
-					numbersStack.push(operationResult)
-				}
-				if operator == ')' && operatorsStack.peek() == '(' {
-					operatorsStack.top()
-					continue
-				} else {
-					operatorsStack.push(operator)
-					expectNumOrLeftComa = true
-					continue
-				}
-			}
+		// Need to calc subexpression
+		err = calcSubExpressions(&numbersStack, &operatorsStack, operator)
+		if err != nil {
+			return result, errors.New("error while calc subexpression: " + err.Error())
+		}
+
+		if operator == ')' && operatorsStack.peek() == '(' {
+			operatorsStack.top()
+			continue
+		} else {
+			operatorsStack.push(operator)
+			expectNumOrLeftComa = true
+			continue
 		}
 	}
 
@@ -130,9 +96,9 @@ func parse(expression string) (result float64, err error) {
 		lastOperatorInStack := operatorsStack.top()
 		rightNumber := numbersStack.top()
 		leftNumber := numbersStack.top()
-		operationResult, err := ExecuteOperator(leftNumber, rightNumber, lastOperatorInStack)
+		operationResult, err := executeOperator(leftNumber, rightNumber, lastOperatorInStack)
 		if err != nil {
-			return result, err
+			return result, errors.New("error while execute operator: " + err.Error())
 		}
 
 		numbersStack.push(operationResult)
@@ -141,7 +107,23 @@ func parse(expression string) (result float64, err error) {
 	return numbersStack.top(), err
 }
 
-func ExecuteOperator(leftNumber float64, rightNumber float64, operator rune) (result float64, err error) {
+func calcSubExpressions(numbersStack *Stack[float64], operatorsStack *Stack[rune], operator rune) error {
+	for !operatorsStack.isEmpty() && (operatorsPriorities[operator] <= operatorsPriorities[operatorsStack.peek()]) {
+		lastOperatorInStack := operatorsStack.top()
+		rightNumber := numbersStack.top()
+		leftNumber := numbersStack.top()
+		operationResult, err := executeOperator(leftNumber, rightNumber, lastOperatorInStack)
+		if err != nil {
+			return errors.New("error while execute operator: " + err.Error())
+		}
+
+		numbersStack.push(operationResult)
+	}
+
+	return nil
+}
+
+func executeOperator(leftNumber float64, rightNumber float64, operator rune) (result float64, err error) {
 	if !isOperator(operator) {
 		return result, errors.New("unsupported operator: " + string(operator))
 	}
@@ -159,31 +141,33 @@ func ExecuteOperator(leftNumber float64, rightNumber float64, operator rune) (re
 	return
 }
 
-func ParseNumber(expression string) (number float64, length int, err error) {
+func parseNumber(expression string) (number float64, length int, err error) {
 	numberStr := ""
 	pointsCounter := 0
 	for idx, v := range expression {
-		if isDigit(v) {
+		if unicode.IsDigit(v) {
 			numberStr += string(v)
-		} else if string(v) == "." && numberStr != "" && pointsCounter == 0 {
+			continue
+		}
+		if isDot(v) && numberStr != "" && pointsCounter == 0 {
 			pointsCounter++
 			numberStr += string(v)
-		} else {
-			if !isOperator(v) {
-				return number, length, errors.New("invalid symbol for number: " + string(v) + " at pos: " + strconv.Itoa(idx))
-			}
-			break
+			continue
 		}
+		if !isOperator(v) {
+			return number, length, errors.New("invalid symbol for number: " + string(v) + " at pos: " + strconv.Itoa(idx))
+		}
+		break
 	}
 	number, err = strconv.ParseFloat(numberStr, 64)
 
 	return number, utf8.RuneCountInString(numberStr), err
 }
 
-func isOperator(char rune) bool {
-	return char == ')' || char == '+' || char == '-' || char == '*' || char == '/'
+func isDot(v rune) bool {
+	return v == '.'
 }
 
-func isDigit(char rune) bool {
-	return '0' <= char && char <= '9'
+func isOperator(char rune) bool {
+	return char == ')' || char == '+' || char == '-' || char == '*' || char == '/'
 }

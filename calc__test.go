@@ -14,7 +14,7 @@ func TestParseNumber(t *testing.T) {
 		{"0.0", 3, 0.0},
 	}
 	for _, v := range tests {
-		result, length, err := ParseNumber(v.expression)
+		result, length, err := parseNumber(v.expression)
 		if err != nil {
 			t.Error(err.Error())
 		}
@@ -38,7 +38,7 @@ func TestExecuteOperator(t *testing.T) {
 		{1.0, 3.0, '/', 1.0 / 3.0},
 	}
 	for _, v := range tests {
-		result, err := ExecuteOperator(v.leftNumber, v.rightNumber, v.operator)
+		result, err := executeOperator(v.leftNumber, v.rightNumber, v.operator)
 		if err != nil {
 			t.Error(err.Error())
 		}
